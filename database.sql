@@ -1,12 +1,18 @@
 -- =====================================================================
--- Serie A News Aggregator - Schema locale (compatibile SQLite/MySQL/Postgres)
+-- Serie A News Aggregator - Schema locale
+-- Compatibile con MySQL/MariaDB, SQLite, PostgreSQL.
 -- =====================================================================
--- Questo file contiene lo schema canonico del database.
--- L'applicazione PHP, in assenza di pdo_sqlite nell'ambiente, mantiene i
--- dati in un file JSON (data/db.json) con la stessa forma logica delle
--- tabelle qui sotto. Lo schema serve come fonte di verita' e per importare
--- i dati in un vero database con un comando come:
+-- Note MySQL/MariaDB:
+--   - tutti i campi indicizzati o UNIQUE sono VARCHAR di lunghezza
+--     compatibile col limite di 3072 byte/key in utf8mb4
+--     (es. VARCHAR(500) -> 2000 byte).
+--   - i campi liberi non indicizzati (title, summary) restano TEXT.
+--
+-- L'applicazione PHP, in assenza di pdo_sqlite/pdo_mysql nell'ambiente
+-- locale, salva i dati in data/db.json con la stessa forma logica delle
+-- tabelle qui sotto. Per importare in un DB reale:
 --   sqlite3 database.db < database.sql
+--   mysql -u root -p miodb < database.sql
 -- =====================================================================
 
 DROP TABLE IF EXISTS articles;
@@ -16,34 +22,39 @@ DROP TABLE IF EXISTS teams;
 -- TEAMS - 20 squadre del prossimo campionato di Serie A
 -- ---------------------------------------------------------------------
 CREATE TABLE teams (
-  id            INTEGER PRIMARY KEY,
-  name          TEXT NOT NULL UNIQUE,
-  slug          TEXT NOT NULL UNIQUE,
-  city          TEXT NOT NULL,
-  primary_hex   TEXT NOT NULL,
-  secondary_hex TEXT NOT NULL,
-  aliases       TEXT NOT NULL  -- alias separati da virgola
+  id            INT NOT NULL,
+  name          VARCHAR(80)  NOT NULL,
+  slug          VARCHAR(40)  NOT NULL,
+  city          VARCHAR(60)  NOT NULL,
+  primary_hex   VARCHAR(7)   NOT NULL,
+  secondary_hex VARCHAR(7)   NOT NULL,
+  aliases       VARCHAR(500) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE (name),
+  UNIQUE (slug)
 );
 
 -- ---------------------------------------------------------------------
 -- ARTICLES - notizie aggregate dai feed RSS italiani
 -- ---------------------------------------------------------------------
 CREATE TABLE articles (
-  id            INTEGER PRIMARY KEY,
-  team_id       INTEGER NOT NULL REFERENCES teams(id),
-  title         TEXT NOT NULL,
+  id            BIGINT       NOT NULL AUTO_INCREMENT,
+  team_id       INT          NOT NULL,
+  title         VARCHAR(500) NOT NULL,
   summary       TEXT,
-  link          TEXT NOT NULL UNIQUE,
-  source        TEXT NOT NULL,
-  category      TEXT NOT NULL,        -- calciomercato | allenatore | conferenza | formazione | generale
-  image_url     TEXT,
-  published_at  TIMESTAMP NOT NULL,
-  fetched_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  link          VARCHAR(500) NOT NULL,
+  source        VARCHAR(80)  NOT NULL,
+  category      VARCHAR(20)  NOT NULL,
+  image_url     VARCHAR(500),
+  published_at  DATETIME     NOT NULL,
+  fetched_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_link (link),
+  KEY idx_articles_team_published (team_id, published_at),
+  KEY idx_articles_category       (category, published_at),
+  KEY idx_articles_published      (published_at),
+  CONSTRAINT fk_article_team FOREIGN KEY (team_id) REFERENCES teams (id)
 );
-
-CREATE INDEX idx_articles_team_published ON articles (team_id, published_at DESC);
-CREATE INDEX idx_articles_category       ON articles (category, published_at DESC);
-CREATE INDEX idx_articles_published      ON articles (published_at DESC);
 
 -- ---------------------------------------------------------------------
 -- SEED: squadre Serie A
