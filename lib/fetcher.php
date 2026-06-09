@@ -7,6 +7,12 @@ require_once __DIR__ . '/storage.php';
 require_once __DIR__ . '/teams.php';
 
 /**
+ * Quanti giorni indietro accettare. Articoli piu vecchi vengono scartati
+ * sia in fase di import che in fase di pulizia del DB.
+ */
+const FRESHNESS_DAYS = 14;
+
+/**
  * Lista feed RSS italiani: generali + per-squadra (TMW).
  */
 function feeds_all(): array {
@@ -30,13 +36,18 @@ function feeds_all(): array {
 
 /**
  * Esegue il fetch di tutti i feed e popola il database.
- * Ritorna un report con feed totali, falliti e nuovi articoli.
+ * Scarta articoli con data non parsabile o piu vecchi di FRESHNESS_DAYS.
+ * Ritorna un report con feed totali, falliti, nuovi articoli e scartati.
  */
-function fetcher_run(): array {
-    $started = date('c');
-    $feeds = feeds_all();
-    $failed = [];
-    $collected = [];
+function fetcher_run(int $maxAgeDays = FRESHNESS_DAYS): array {
+    $started      = date('c');
+    $cutoffTs     = time() - ($maxAgeDays * 86400);
+    $feeds        = feeds_all();
+    $failed       = [];
+    $collected    = [];
+    $skippedStale = 0;
+    $skippedNoDate= 0;
+
     foreach ($feeds as $feed) {
         $body = rss_http_get($feed['url']);
         if ($body === null) {
@@ -52,7 +63,16 @@ function fetcher_run(): array {
             $haystack = $item['title'] . ' ' . rss_clean_html($item['description']);
             $teamId = match_team($haystack);
             if ($teamId === null) continue;
-            $publishedIso = rss_parse_date($item['pubDate']) ?? gmdate('Y-m-d\TH:i:s\Z');
+
+            $publishedIso = rss_parse_date($item['pubDate']);
+            if ($publishedIso === null) { $skippedNoDate++; continue; }
+
+            $publishedTs = strtotime($publishedIso);
+            if ($publishedTs === false || $publishedTs < $cutoffTs) {
+                $skippedStale++;
+                continue;
+            }
+
             $summary = substr(rss_clean_html($item['description']), 0, 320);
             $collected[] = [
                 'team_id'      => $teamId,
@@ -66,15 +86,22 @@ function fetcher_run(): array {
             ];
         }
     }
+
+    $purged   = db_purge_older_than($cutoffTs);
     $inserted = db_upsert_articles($collected);
     $finished = date('c');
     db_set_run_meta($started, $finished, $failed, $inserted, count($feeds));
+
     return [
-        'inserted'     => $inserted,
-        'feeds_total'  => count($feeds),
-        'feeds_failed' => count($failed),
-        'failed'       => $failed,
-        'started_at'   => $started,
-        'finished_at'  => $finished,
+        'inserted'        => $inserted,
+        'feeds_total'     => count($feeds),
+        'feeds_failed'    => count($failed),
+        'failed'          => $failed,
+        'skipped_stale'   => $skippedStale,
+        'skipped_no_date' => $skippedNoDate,
+        'purged_old'      => $purged,
+        'cutoff_days'     => $maxAgeDays,
+        'started_at'      => $started,
+        'finished_at'     => $finished,
     ];
 }

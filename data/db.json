@@ -1,0 +1,37 @@
+{
+    "articles": [],
+    "last_run": {
+        "started_at": "2026-06-09T13:40:57+00:00",
+        "finished_at": "2026-06-09T13:41:16+00:00",
+        "inserted": 0,
+        "feeds_total": 26,
+        "feeds_failed": 25
+    },
+    "failed_feeds": [
+        "TuttoMercatoWeb",
+        "Calciomercato.com",
+        "Sky Sport",
+        "Corriere dello Sport",
+        "Tuttosport",
+        "TMW Milan",
+        "TMW Monza",
+        "TMW Fiorentina",
+        "TMW Roma",
+        "TMW Atalanta",
+        "TMW Bologna",
+        "TMW Cagliari",
+        "TMW Como",
+        "TMW Frosinone",
+        "TMW Genoa",
+        "TMW Inter",
+        "TMW Juventus",
+        "TMW Lazio",
+        "TMW Parma",
+        "TMW Sassuolo",
+        "TMW Napoli",
+        "TMW Torino",
+        "TMW Udinese",
+        "TMW Lecce",
+        "TMW Venezia"
+    ]
+}

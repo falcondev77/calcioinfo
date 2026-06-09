@@ -7,6 +7,11 @@ require_once __DIR__ . '/lib/teams.php';
 $teamSlug = isset($_GET['team']) ? trim((string)$_GET['team']) : '';
 $category = isset($_GET['cat'])  ? trim((string)$_GET['cat'])  : 'all';
 $query    = isset($_GET['q'])    ? trim((string)$_GET['q'])    : '';
+$days     = isset($_GET['days']) ? (int)$_GET['days']           : 7;
+
+$validDays = [1, 3, 7, 14];
+if (!in_array($days, $validDays, true)) $days = 7;
+$minTs = time() - ($days * 86400);
 
 $validCats = ['all','calciomercato','allenatore','conferenza','formazione','generale'];
 if (!in_array($category, $validCats, true)) $category = 'all';
@@ -16,12 +21,13 @@ foreach (teams_all() as $t) {
     if ($t['slug'] === $teamSlug) { $selectedTeamId = $t['id']; break; }
 }
 
-$articles  = db_query_articles($selectedTeamId, $category === 'all' ? null : $category, $query);
-$counts    = db_counts_by_team();
+$articles  = db_query_articles($selectedTeamId, $category === 'all' ? null : $category, $query, $minTs);
+$counts    = db_counts_by_team($minTs);
 $meta      = db_meta();
 $lastRun   = $meta['last_run'];
 $failed    = $meta['failed_feeds'];
-$totalAll  = $meta['total'];
+$totalAll  = count($articles);
+$totalDb   = $meta['total'];
 
 function h(?string $s): string { return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 
@@ -60,6 +66,7 @@ function build_url(array $overrides): string {
         'team' => $_GET['team'] ?? '',
         'cat'  => $_GET['cat']  ?? '',
         'q'    => $_GET['q']    ?? '',
+        'days' => $_GET['days'] ?? '',
     ];
     foreach ($overrides as $k => $v) $params[$k] = $v;
     $params = array_filter($params, fn($v) => $v !== '' && $v !== null);
@@ -152,7 +159,7 @@ $cats = [
       </p>
     </div>
     <div class="hero__stats">
-      <div class="stat"><div class="stat__value"><?= h((string)$totalAll) ?></div><div class="stat__label">Notizie raccolte</div></div>
+      <div class="stat"><div class="stat__value"><?= h((string)$totalAll) ?></div><div class="stat__label">Notizie ultim<?= $days === 1 ? 'e 24h' : 'i ' . $days . ' giorni' ?></div></div>
       <div class="stat"><div class="stat__value">20</div><div class="stat__label">Squadre seguite</div></div>
       <div class="stat"><div class="stat__value">6+</div><div class="stat__label">Fonti italiane</div></div>
     </div>
@@ -180,6 +187,13 @@ $cats = [
            href="<?= h(build_url(['cat' => $value === 'all' ? null : $value])) ?>"><?= h($label) ?></a>
       <?php endforeach; ?>
     </div>
+    <div class="freshness" role="group" aria-label="Finestra temporale">
+      <span class="freshness__label">Periodo:</span>
+      <?php foreach ([[1,'Oggi'],[3,'3 giorni'],[7,'Settimana'],[14,'2 settimane']] as [$value,$label]): ?>
+        <a class="freshness__opt <?= $days === $value ? 'is-active' : '' ?>"
+           href="<?= h(build_url(['days' => $value === 7 ? null : $value])) ?>"><?= h($label) ?></a>
+      <?php endforeach; ?>
+    </div>
   </form>
 
   <div class="team-filter">
@@ -198,9 +212,13 @@ $cats = [
     <?php endforeach; ?>
   </div>
 
-  <?php if ($totalAll === 0): ?>
+  <?php if ($totalDb === 0): ?>
     <div class="banner banner--warn">
       Nessuna notizia ancora. Premi <strong>Aggiorna</strong> per raccogliere le ultime notizie dai feed italiani.
+    </div>
+  <?php elseif ($totalAll === 0): ?>
+    <div class="banner banner--warn">
+      Nessuna notizia negli ultimi <?= h((string)$days) ?> giorni con questi filtri. Allarga la finestra temporale o premi <strong>Aggiorna</strong>.
     </div>
   <?php elseif (!empty($failed)): ?>
     <div class="banner banner--warn">

@@ -77,15 +77,20 @@ function db_set_run_meta(string $started_at, string $finished_at, array $failed_
 }
 
 /**
- * Filtra gli articoli secondo team_id, category, query testuale.
+ * Filtra gli articoli secondo team_id, category, query testuale e
+ * (opzionale) cutoff temporale: solo articoli con published_at >= cutoff.
  */
-function db_query_articles(?int $team_id, ?string $category, string $q): array {
+function db_query_articles(?int $team_id, ?string $category, string $q, ?int $minTs = null): array {
     $state = db_load();
     $q = trim(strtolower($q));
     $out = [];
     foreach ($state['articles'] as $a) {
         if ($team_id !== null && (int)$a['team_id'] !== $team_id) continue;
         if ($category !== null && $category !== 'all' && $a['category'] !== $category) continue;
+        if ($minTs !== null) {
+            $ts = strtotime((string)($a['published_at'] ?? ''));
+            if ($ts === false || $ts < $minTs) continue;
+        }
         if ($q !== '') {
             $blob = strtolower(($a['title'] ?? '') . ' ' . ($a['summary'] ?? ''));
             if (!str_contains($blob, $q)) continue;
@@ -95,10 +100,14 @@ function db_query_articles(?int $team_id, ?string $category, string $q): array {
     return $out;
 }
 
-function db_counts_by_team(): array {
+function db_counts_by_team(?int $minTs = null): array {
     $state = db_load();
     $counts = [];
     foreach ($state['articles'] as $a) {
+        if ($minTs !== null) {
+            $ts = strtotime((string)($a['published_at'] ?? ''));
+            if ($ts === false || $ts < $minTs) continue;
+        }
         $tid = (int)$a['team_id'];
         $counts[$tid] = ($counts[$tid] ?? 0) + 1;
     }
@@ -112,4 +121,27 @@ function db_meta(): array {
         'failed_feeds' => $state['failed_feeds'] ?? [],
         'total'        => count($state['articles']),
     ];
+}
+
+/**
+ * Rimuove articoli con published_at piu vecchio del timestamp passato.
+ * Ritorna il numero di articoli rimossi.
+ */
+function db_purge_older_than(int $cutoffTs): int {
+    $state = db_load();
+    $kept = [];
+    $removed = 0;
+    foreach ($state['articles'] as $a) {
+        $ts = strtotime((string)($a['published_at'] ?? ''));
+        if ($ts === false || $ts < $cutoffTs) {
+            $removed++;
+            continue;
+        }
+        $kept[] = $a;
+    }
+    if ($removed > 0) {
+        $state['articles'] = $kept;
+        db_save($state);
+    }
+    return $removed;
 }
